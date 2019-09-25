@@ -6,18 +6,19 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import s from 'underscore.string';
 import toastr from 'toastr';
 
-import { useAdminSidebar } from '../useAdminSidebar';
-import { useReactiveValue } from '../../../hooks/useReactiveValue';
 import { PrivateSettingsCachedCollection } from '../../../../app/ui-admin/client/SettingsCachedCollection';
-import { Header } from '../../header/Header';
+import { handleError } from '../../../../app/utils/client';
+import { useAtLeastOnePermission } from '../../../hooks/usePermissions';
+import { useReactiveValue } from '../../../hooks/useReactiveValue';
+import { useToggle } from '../../../hooks/useToggle';
 import { useTranslation } from '../../../hooks/useTranslation';
 import { Button } from '../../basic/Button';
-import { useAtLeastOnePermission } from '../../../hooks/usePermissions';
 import { Icon } from '../../basic/Icon';
-import { useToggle } from '../../../hooks/useToggle';
 import { MarkdownText } from '../../basic/MarkdownText';
 import { RawText } from '../../basic/RawText';
-import { handleError } from '../../../../app/utils/client';
+import { Header } from '../../header/Header';
+import { useAdminSidebar } from '../useAdminSidebar';
+import { useTracker } from '../../../hooks/useTracker';
 
 
 function SettingsGroupSectionPanel({ children, name, defaultCollapsed, help }) {
@@ -33,7 +34,7 @@ function SettingsGroupSectionPanel({ children, name, defaultCollapsed, help }) {
 		{name && <div className='section-title' onClick={handleTitleClick}>
 			<div className='section-title-text'>{t(name)}</div>
 			<div className='section-title-right'>
-				<Button nude aria-label={collapsed ? t('Expand') : t('Collapse')}>
+				<Button nude title={collapsed ? t('Expand') : t('Collapse')}>
 					<Icon icon={collapsed ? 'icon-angle-down' : 'icon-angle-up'} />
 				</Button>
 			</div>
@@ -54,16 +55,12 @@ const usePrivateSettingsCollection = () => {
 		return cachedCollection.collection;
 	}, []);
 
-	useEffect(() => () => {
-		// TODO: cleanup collection
-	}, []);
-
 	return collection;
 };
 
 const SettingsContext = createContext([]);
 
-function StringSettingInput({ setting }) {
+function StringSettingInput({ setting, onUpdate }) {
 	const {
 		_id,
 		multiline,
@@ -74,16 +71,36 @@ function StringSettingInput({ setting }) {
 		disabled,
 	} = setting;
 
-	const { formCollection, collection } = useContext(SettingsContext);
-
 	const handleChange = (event) => {
 		const { value } = event.currentTarget;
-		formCollection.update({ _id }, { $set: { value, changed: collection.findOne(_id).value !== value } });
+		onUpdate({ value });
 	};
 
-	return multiline
-		? <textarea className='rc-input__element' name={_id} rows='4' style={{ height: 'auto' }} value={value} placeholder={placeholder} disabled={disabled} readOnly={readonly} onChange={handleChange} />
-		: <input type='text' className='rc-input__element' name={_id} value={value} placeholder={placeholder} disabled={disabled} readOnly={readonly} autoComplete={autocomplete === false ? 'off' : undefined} onChange={handleChange} />;
+	if (multiline) {
+		return <textarea
+			className='rc-input__element'
+			name={_id}
+			rows='4'
+			style={{ height: 'auto' }}
+			value={value}
+			placeholder={placeholder}
+			disabled={disabled}
+			readOnly={readonly}
+			onChange={handleChange}
+		/>;
+	}
+
+	return <input
+		type='text'
+		className='rc-input__element'
+		name={_id}
+		value={value}
+		placeholder={placeholder}
+		disabled={disabled}
+		readOnly={readonly}
+		autoComplete={autocomplete === false ? 'off' : undefined}
+		onChange={handleChange}
+	/>;
 }
 
 function RelativeUrlSettingInput({ setting }) {
@@ -437,7 +454,7 @@ function RoomPickSettingInput({ setting }) {
 	</div>;
 }
 
-function SettingField({ setting, didSectionChange }) {
+function SettingField({ setting, didSectionChange, onUpdate }) {
 	const t = useTranslation();
 
 	const { changed } = setting;
@@ -482,19 +499,19 @@ function SettingField({ setting, didSectionChange }) {
 	return <div className={['input-line', 'double-col', changed && 'setting-changed'].filter(Boolean).join(' ')}>
 		<label className='setting-label' title={setting._id}>{(setting.i18nLabel && t(setting.i18nLabel)) || (setting._id || t(setting._id))}</label>
 		<div className='setting-field'>
-			{setting.type === 'string' && <StringSettingInput setting={setting} />}
-			{setting.type === 'relativeUrl' && <RelativeUrlSettingInput setting={setting} />}
-			{setting.type === 'password' && <PasswordSettingInput setting={setting} />}
-			{setting.type === 'int' && <IntSettingInput setting={setting} />}
-			{setting.type === 'boolean' && <BooleanSettingInput setting={setting} />}
-			{setting.type === 'select' && <SelectSettingInput setting={setting} />}
-			{setting.type === 'language' && <LanguageSettingInput setting={setting} />}
-			{setting.type === 'color' && <ColorSettingInput setting={setting} />}
-			{setting.type === 'font' && <FontSettingInput setting={setting} />}
-			{setting.type === 'code' && <CodeSettingInput setting={setting} />}
-			{setting.type === 'action' && <ActionSettingInput setting={setting} didSectionChange={didSectionChange} />}
-			{setting.type === 'asset' && <AssetSettingInput setting={setting} />}
-			{setting.type === 'roomPick' && <RoomPickSettingInput setting={setting} />}
+			{setting.type === 'string' && <StringSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'relativeUrl' && <RelativeUrlSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'password' && <PasswordSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'int' && <IntSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'boolean' && <BooleanSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'select' && <SelectSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'language' && <LanguageSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'color' && <ColorSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'font' && <FontSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'code' && <CodeSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'action' && <ActionSettingInput setting={setting} onUpdate={onUpdate} didSectionChange={didSectionChange} />}
+			{setting.type === 'asset' && <AssetSettingInput setting={setting} onUpdate={onUpdate} />}
+			{setting.type === 'roomPick' && <RoomPickSettingInput setting={setting} onUpdate={onUpdate} />}
 
 			{t.exists(setting.i18nDescription) && <div className='settings-description secondary-font-color'>
 				<MarkdownText>{t(setting.i18nDescription)}</MarkdownText>
@@ -514,69 +531,77 @@ function SettingField({ setting, didSectionChange }) {
 
 const useSettingsFormState = (groupId) => {
 	const collection = usePrivateSettingsCollection();
+
 	const formCollection = useMemo(() => new Mongo.Collection(null), []);
 
-	const disabled = ({ blocked, enableQuery }) => {
-		if (blocked) {
-			return true;
-		}
-
-		if (!enableQuery) {
-			return false;
-		}
-
-		const queries = [].concat(typeof enableQuery === 'string' ? JSON.parse(enableQuery) : enableQuery);
-
-		return !queries.every((query) => !!formCollection.findOne(query));
-	};
-
 	useEffect(() => {
-		collection.find().observe({
+		const queryHandle = collection.find().observe({
 			added: (data) => {
-				formCollection.insert({ ...data, disabled: disabled(data) });
+				formCollection.insert(data);
 			},
 			changed: (data) => {
-				formCollection.update(data._id, { ...data, disabled: disabled(data) });
+				formCollection.update(data._id, data);
 			},
 			removed: (data) => {
 				formCollection.remove(data._id);
 			},
 		});
+
+		return () => {
+			queryHandle.stop();
+		};
 	}, []);
 
-	const sections = useReactiveValue(() => Object.values(
-		formCollection
-			.find({ group: groupId }, { sort: { section: 1, sorter: 1, i18nLabel: 1 } })
+	const group = useReactiveValue(() => collection.findOne({ _id: groupId, type: 'group' }), [groupId]);
+
+	const [settings, setSettings] = useState([]);
+
+	useTracker(() => {
+		const disabled = ({ blocked, enableQuery }) => {
+			if (blocked) {
+				return true;
+			}
+
+			if (!enableQuery) {
+				return false;
+			}
+
+			const queries = [].concat(typeof enableQuery === 'string' ? JSON.parse(enableQuery) : enableQuery);
+
+			return !queries.every((query) => !!formCollection.findOne(query));
+		};
+
+		setSettings(formCollection.find({ group: groupId }, { sort: { section: 1, sorter: 1, i18nLabel: 1 } })
 			.fetch()
-			.reduce((sections, setting) => {
-				const name = setting.section || '';
-				const changed = (sections[name] && sections[name].changed) || setting.changed;
-				const settings = (sections[name] && sections[name].settings) || [];
+			.map((setting) => ({ ...setting, disabled: disabled(setting) })));
+	}, [groupId]);
 
-				settings.push({ ...setting, disabled: disabled(setting) });
+	const updateSetting = (_id, data) => {
+		const current = collection.findOne(_id);
+		const changed = Object.entries(data).some(([key, value]) => value !== current[key]);
+		formCollection.update({ _id }, { $set: { ...data, changed } });
+		setSettings((settings) => settings.map((setting) => (setting._id === _id ? { ...setting, ...data, changed } : setting)));
+	};
 
-				return {
-					...sections,
-					[name]: {
-						name,
-						changed,
-						settings,
-					},
-				};
-			}, {})
-	), [groupId]);
+	const sections = useMemo(() => Object.values(
+		settings.reduce((sections, setting) => {
+			const name = setting.section || '';
+			const section = sections[name] || { name };
+			section.changed = section.changed || setting.changed;
+			section.settings = (section.settings || []).concat(setting);
 
-	const group = useReactiveValue(() => {
-		const group = formCollection.findOne({ _id: groupId, type: 'group' });
+			return {
+				...sections,
+				[name]: section,
+			};
+		}, {})
+	), [settings]);
 
-		if (group) {
-			group.changed = sections.some(({ changed }) => changed);
-		}
+	if (group) {
+		group.changed = sections.some(({ changed }) => changed);
+	}
 
-		return group;
-	}, [groupId, sections]);
-
-	return [collection, formCollection, group, sections];
+	return [group, sections, updateSetting, collection, formCollection];
 };
 
 export function AnySettingsPage({ group: groupId }) {
@@ -585,7 +610,7 @@ export function AnySettingsPage({ group: groupId }) {
 	const t = useTranslation();
 
 	const hasPermission = useAtLeastOnePermission(['view-privileged-setting', 'edit-privileged-setting', 'manage-selected-settings']);
-	const [collection, formCollection, group, sections] = useSettingsFormState(groupId);
+	const [group, sections, updateSetting, collection, formCollection] = useSettingsFormState(groupId);
 
 	const sectionIsCustomOAuth = (sectionName) => sectionName && /^Custom OAuth:\s.+/.test(sectionName);
 
@@ -600,7 +625,7 @@ export function AnySettingsPage({ group: groupId }) {
 	}
 
 	if (!hasPermission) {
-		return <section className='page-container page-home page-static page-settings'>
+		return <section className='page-container page-static page-settings'>
 			<Header rawSectionName={t(group.i18nLabel)} />
 			<div className='content'>
 				<p>{t('You_are_not_authorized_to_view_this_page')}</p>
@@ -609,7 +634,7 @@ export function AnySettingsPage({ group: groupId }) {
 	}
 
 	return <SettingsContext.Provider value={{ collection, formCollection }}>
-		<section className='page-container page-home page-static page-settings'>
+		<section className='page-container page-static page-settings'>
 			<Header rawSectionName={t(group.i18nLabel)}>
 				<Header.ButtonSection>
 					{group.changed && <Button cancel className='discard'>{t('Cancel')}</Button>}
@@ -632,7 +657,7 @@ export function AnySettingsPage({ group: groupId }) {
 				<div className='page-settings rocket-form'>
 					{sections.map((section) => <SettingsGroupSectionPanel key={section.name} name={section.name} defaultCollapsed={!!section.name} help={sectionIsCustomOAuth(section.name) && <RawText>{t('Custom_oauth_helper', callbackURL(section.name))}</RawText>}>
 
-						{section.settings.map((setting) => <SettingField key={setting._id} setting={setting} didSectionChange={section.changed} />)}
+						{section.settings.map((setting) => <SettingField key={setting._id} setting={setting} onUpdate={updateSetting.bind(null, setting._id)} didSectionChange={section.changed} />)}
 
 						{group._id !== 'Assets' && <div className='input-line double-col'>
 							<label className='setting-label'>{t('Reset_section_settings')}</label>
