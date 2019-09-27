@@ -3,11 +3,12 @@ import React from 'react';
 import { useTranslation } from '../../../hooks/useTranslation';
 import { Button } from '../../basic/Button';
 import { Header } from '../../header/Header';
-import { useSettingsGroup } from './SettingsEditingState';
+import { useSettingsGroup, useSettingsGroupActions } from './SettingsEditingState';
 
 export function SettingsGroup({ children, headerButtons }) {
 	const t = useTranslation();
 	const group = useSettingsGroup();
+	const { resetGroup, saveGroup } = useSettingsGroupActions();
 
 	if (!group) {
 		// TODO
@@ -17,11 +18,19 @@ export function SettingsGroup({ children, headerButtons }) {
 		</>;
 	}
 
+	const handleCancelClick = () => {
+		resetGroup();
+	};
+
+	const handleSaveClick = () => {
+		saveGroup();
+	};
+
 	return <>
 		<Header rawSectionName={t(group.i18nLabel)}>
 			<Header.ButtonSection>
-				{group.changed && <Button cancel className='discard'>{t('Cancel')}</Button>}
-				<Button primary disabled={!group.changed} className='save'>{t('Save_changes')}</Button>
+				{group.changed && <Button cancel onClick={handleCancelClick}>{t('Cancel')}</Button>}
+				<Button primary disabled={!group.changed} onClick={handleSaveClick}>{t('Save_changes')}</Button>
 				{headerButtons}
 			</Header.ButtonSection>
 		</Header>

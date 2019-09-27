@@ -3,8 +3,9 @@ import React, { createContext, useContext, useMemo, useState, useEffect } from '
 
 import { PrivateSettingsCachedCollection } from '../../../../app/ui-admin/client/SettingsCachedCollection';
 import { useDebouncedCallback } from '../../../hooks/useDebouncedCallback';
-import { useDebouncedState } from '../../../hooks/useDebouncedState';
 import { useReactiveValue } from '../../../hooks/useReactiveValue';
+import { useTracker } from '../../../hooks/useTracker';
+import { settings } from '../../../../app/settings/lib/settings';
 
 const SettingsEditingContext = createContext({});
 SettingsEditingContext.displayName = 'SettingsEditingContext';
@@ -37,7 +38,7 @@ export function SettingsEditingState({ children, groupId }) {
 	}, []);
 
 	const group = useReactiveValue(() => temporaryCollection.findOne({ _id: groupId, type: 'group' }), [groupId]);
-	const [changed, setGroupChanged] = useDebouncedState(false, 70);
+	const changed = useReactiveValue(() => !!temporaryCollection.findOne({ group: groupId, changed: true }));
 
 	const sections = useReactiveValue(() => Object.values(
 		temporaryCollection
@@ -60,7 +61,6 @@ export function SettingsEditingState({ children, groupId }) {
 		persistedCollection,
 		temporaryCollection,
 		group: group ? { ...group, changed } : undefined,
-		setGroupChanged,
 		sections,
 	}), [
 		persistedCollection,
@@ -78,12 +78,18 @@ export function SettingsEditingState({ children, groupId }) {
 SettingsEditingState.WithSection = function WithSection({ children, section }) {
 	const upperContextValue = useContext(SettingsEditingContext);
 
-	const [changed, setCurrentSectionChanged] = useDebouncedState(false, 70);
+	const { temporaryCollection, group } = upperContextValue;
+	const changed = useReactiveValue(() => !!temporaryCollection.findOne({
+		group: group._id,
+		changed: true,
+		...section.name === ''
+			? { $or: [{ section: '' }, { section: { $exists: false } }] }
+			: { section: section.name },
+	}));
 
 	const contextValue = useMemo(() => ({
 		...upperContextValue,
 		section: section ? { ...section, changed } : undefined,
-		setCurrentSectionChanged,
 	}), [upperContextValue]);
 
 	return <SettingsEditingContext.Provider value={contextValue}>
@@ -93,6 +99,62 @@ SettingsEditingState.WithSection = function WithSection({ children, section }) {
 
 export const useSettingsGroup = () => useContext(SettingsEditingContext).group;
 
+export const useSettingsGroupActions = () => {
+	const {
+		persistedCollection,
+		temporaryCollection,
+		group,
+	} = useContext(SettingsEditingContext);
+
+	const resetGroup = () => {
+		temporaryCollection
+			.find({
+				group: group._id,
+				changed: true,
+			}, { fields: {} })
+			.map(({ _id }) => persistedCollection.findOne({ _id }, { fields: { _id: 1, value: 1, editor: 1 } }))
+			.forEach(({ _id, value, editor }) => {
+				temporaryCollection.update({ _id }, { $set: { value, editor, changed: false } });
+			});
+	};
+
+	const saveGroup = () => new Promise((resolve, reject) => {
+		const changedSettings = temporaryCollection
+			.find({
+				group: group._id,
+				changed: true,
+			}, { fields: { _id: 1, value: 1, editor: 1 } })
+			.fetch();
+
+		if (changedSettings.length === 0) {
+			return resolve(false);
+		}
+
+		settings.batchSet(changedSettings, (error) => {
+			if (error) {
+				changedSettings
+					.filter(({ _id }) => !error.details.settingIds.includes(_id))
+					.forEach(({ _id }) => temporaryCollection.update({ _id }, { $unset: { changed: 1 } }));
+				return reject(error);
+			}
+
+			changedSettings.forEach(({ _id }) => temporaryCollection.update({ _id }, { $unset: { changed: 1 } }));
+		});
+
+
+		// 	if (rcSettings.some(({ _id }) => _id === 'Language')) {
+		// 		const lng = Meteor.user().language
+		// 			|| rcSettings.filter(({ _id }) => _id === 'Language').shift().value
+		// 			|| 'en';
+		// 		return TAPi18n._loadLanguage(lng).then(() => toastr.success(TAPi18n.__('Settings_updated', { lng })));
+		// 	}
+		// 	toastr.success(TAPi18n.__('Settings_updated'));
+		// });
+	});
+
+	return { resetGroup, saveGroup };
+};
+
 export const useSettingsGroupSections = () => useContext(SettingsEditingContext).sections;
 
 export const useCurrentSettingsGroupSection = () => useContext(SettingsEditingContext).section;
@@ -101,11 +163,22 @@ export const useSettingProps = ({ _id, blocked, enableQuery }) => {
 	const {
 		persistedCollection,
 		temporaryCollection,
-		setGroupChanged,
-		setCurrentSectionChanged,
 	} = useContext(SettingsEditingContext);
 
 	const persistedSetting = useReactiveValue(() => persistedCollection.findOne(_id), [_id]);
+
+	const [state, setState] = useState(persistedSetting);
+
+	const updateAtCollection = useDebouncedCallback((data) => {
+		temporaryCollection.update({ _id }, { $set: data });
+	}, 70, [_id]);
+
+	useTracker(() => {
+		const { value, editor, changed } = temporaryCollection.findOne({ _id },
+			{ fields: { value: 1, editor: 1, changed: 1 } });
+
+		setState((state) => ({ ...state, value, editor, changed }));
+	}, [_id]);
 
 	const disabled = useReactiveValue(() => {
 		if (blocked) {
@@ -121,26 +194,16 @@ export const useSettingProps = ({ _id, blocked, enableQuery }) => {
 		return !queries.every((query) => !!temporaryCollection.findOne(query));
 	}, [blocked, enableQuery]);
 
-	const [changed, setChanged] = useState(false);
-	const [state, setState] = useState(persistedSetting);
-	const updateCollection = useDebouncedCallback((data) => {
-		temporaryCollection.update({ _id }, { $set: data });
-	}, 70, [_id]);
-
 	const onChange = (data) => {
-		const changed = Object.entries(data).some(([key, value]) => value !== persistedSetting[key]);
-		setChanged(changed);
-		setCurrentSectionChanged(changed);
-		setGroupChanged(changed);
-		setState((state) => ({ ...state, ...data }));
-		updateCollection(data);
+		const changed = Object.entries(data).some(([key, value]) => persistedSetting[key] !== value);
+		setState((state) => ({ ...state, ...data, changed }));
+		updateAtCollection({ ...data, changed });
 	};
 
 	const onReset = () => onChange(persistedSetting);
 
 	return {
 		...state,
-		changed,
 		disabled,
 		onChange,
 		onReset,
