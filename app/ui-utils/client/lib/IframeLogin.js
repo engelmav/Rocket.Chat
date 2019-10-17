@@ -62,16 +62,14 @@ export class IframeLogin {
     }
 
     const authToken = FlowRouter.getQueryParam('authToken');
+    
     if (authToken) {
-      debugger;
-      console.log(`Authenticating with token`);
-      console.log(JSON.stringify(authToken));
       this.loginWithTokenParam(authToken, (error, result) => {
         if (error) {
-          console.log(`iframe param token auth failed: ${error}`);
+          console.log(`iframeParam token auth failed: ${error}`);
           this.reactiveIframeUrl.set(iframeUrl);
         } else {
-          console.log(`iframe param token auth passed:  ${result}`);
+          console.log(`iframeParam token auth passed:  ${result}`);
           this.reactiveIframeUrl.set();
         }
         callback(error, result);

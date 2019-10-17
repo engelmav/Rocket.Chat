@@ -32,7 +32,6 @@ Accounts.registerLoginHandler('iframeTokenParam', function (result) {
   let authedUser = Meteor.users.findOne({
     "services.resume.loginTokens": { $elemMatch: { "hashedToken": hashedTokenProvided } }
   });
-  debugger;
   if (authedUser) {
     return {
       userId: authedUser._id
