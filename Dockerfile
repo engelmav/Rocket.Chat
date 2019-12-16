@@ -49,7 +49,8 @@ USER rocketchat
 
 # needs a mongoinstance - defaults to container linking with alias 'db'
 ENV DEPLOY_METHOD=docker-official \
-    MONGO_URL=mongodb://db:27017/meteor \
+          MONGO_URL=mongodb://mongo:27017/meteor?replicaSet=rs0 \
+    MONGO_OPLOG_URL=mongodb://mongo:27017/local \
     HOME=/tmp \
     PORT=3000 \
     ROOT_URL=http://localhost:3000 \
@@ -57,5 +58,5 @@ ENV DEPLOY_METHOD=docker-official \
 
 EXPOSE 3000
 
-
+ENV MONGO_OPLOG_URL=mongodb://mongo:27017/local
 CMD ["node", "main.js"]
